@@ -1,0 +1,84 @@
+
+{% extends "base.html" %}
+{% block content %}
+<h2 class="title">Traceroute</h2>
+<p class="subtitle">Map the path packets take to a destination. Uses system <span class="badge">tracert/traceroute</span>. Optional geolocation via <span class="badge">ip-api.com</span>.</p>
+
+<form method="post" class="panel grid md:grid-cols-4 gap-4">
+  <div>
+    <label class="lbl">Destination URL / Host / IP</label>
+    <input class="inp" type="text" name="host" value="{{ host or '8.8.8.8' }}"/>
+  </div>
+  <div>
+    <label class="lbl">Max hops</label>
+    <input class="inp" type="number" name="max_hops" value="{{ max_hops or 20 }}" min="1" max="64"/>
+  </div>
+  <div class="flex items-center gap-2">
+    <input type="checkbox" name="geo" {% if geo %}checked{% endif %}/>
+    <label class="lbl m-0">Enrich with country/city/lat/lon (map)</label>
+  </div>
+  <div class="flex items-end">
+    <button class="btn-primary">Run traceroute</button>
+  </div>
+</form>
+
+{% if error %}
+<div class="panel mt-4">
+  <div class="text-red-300 text-sm">Error: {{ error }}</div>
+</div>
+{% endif %}
+
+{% if rows %}
+<div class="grid lg:grid-cols-2 gap-6 mt-4">
+  <div class="panel">
+    <div class="panel-title">Hops</div>
+    <div class="overflow-x-auto">
+      <table class="tbl">
+        <thead><tr><th>Hop</th><th>IP</th><th class="t-right">RTT (ms)</th><th>Country</th><th>City</th><th>ISP/Org</th></tr></thead>
+        <tbody>
+          {% for r in rows %}
+          <tr>
+            <td>{{ r.hop }}</td>
+            <td class="mono">{{ r.ip }}</td>
+            <td class="t-right">{{ r.rtt_ms if r.rtt_ms is not none else "—" }}</td>
+            <td>{{ r.country or "—" }}</td>
+            <td>{{ r.city or "—" }}</td>
+            <td>{{ r.org or "—" }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-title">World map</div>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <div id="map" style="height:420px;border-radius:12px;"></div>
+    <script>
+      const hops = {{ rows|tojson }}.filter(h => h.lat !== null && h.lon !== null);
+      const map = L.map('map');
+      const tile = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OpenStreetMap' });
+      tile.addTo(map);
+      if (hops.length){
+        const latlngs = hops.map(h => [h.lat, h.lon]);
+        const group = L.featureGroup(latlngs.map(ll => L.marker(ll)));
+        group.addTo(map);
+        L.polyline(latlngs, {weight:3}).addTo(map);
+        map.fitBounds(group.getBounds().pad(0.2));
+        hops.forEach((h, i) => {
+          L.marker([h.lat, h.lon]).addTo(map).bindPopup(
+            `<b>Hop ${h.hop}</b><br/>${h.ip}<br/>${h.country || ''} ${h.city || ''}<br/>RTT: ${h.rtt_ms ?? '—'} ms`
+          );
+        });
+      } else {
+        map.setView([20,0], 2);
+      }
+    </script>
+  </div>
+</div>
+{% endif %}
+
+<a href="{{ url_for('index') }}" class="btn-secondary mt-6">← Back</a>
+{% endblock %}
